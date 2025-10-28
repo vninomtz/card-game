@@ -1,33 +1,32 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 )
 
-func CreatePlayers(size int) []Player {
-	res := []Player{}
-	for i := 0; i <= size; i++ {
-		name := fmt.Sprintf("Player %d", i+1)
-		res = append(res, NewPlayer(name))
-	}
-	return res
-}
-
 func TestInitDeck(t *testing.T) {
-	game := NewGame(CreatePlayers(4), 10)
-	game.initDeck()
-	game.shuffle()
+	g := NewGame(CreatePlayers(3), 10)
+	g.Start()
 
-	// for i, c := range game.Deck {
-	// 	fmt.Printf("card %d: %s with num %d\n", i+1, c.Color, c.Number)
-	// }
-	fmt.Printf("Game %s\n", game.Id)
-	for k, p := range game.Hands {
+	if g.CurrentCard().Id == "" {
+		t.Fatalf("Expected card to init Game, got %v instead", g.CurrentCard())
+	}
 
-		fmt.Printf("Player %s with %d cards\n", k, len(p))
-		for _, c := range p {
-			fmt.Printf("  %v: \n", c)
+	player := g.CurrentPlayer()
+	if player.Id == "" {
+		t.Fatalf("Expected a player, got %v instead", player)
+	}
+	hand := g.GetPlayerHand(player.Id)
+	if len(hand) != 7 {
+		t.Fatalf("Expected start with 7 cards, got %d instead", len(hand))
+	}
+	has, card := FindPlayableCard(hand, g.CurrentCard())
+	if has {
+		err := g.Play(player.Id, card)
+		if err != nil {
+			t.Fatalf("Unexpected error: %s", err)
 		}
+	} else {
+		g.DrawCard(player.Id)
 	}
 }

@@ -75,22 +75,23 @@ type Player struct {
 }
 
 type Game struct {
-	Id          string
-	Players     []Player
-	Deck        []Card
-	Discard     []Card
-	Hands       map[string][]Card
-	Direction   int
-	Playing     string // Player Id
-	CurrentCard Card
-	Events      []string
-	Rand        *rand.Rand
-	State       State
+	Id        string
+	Players   []Player
+	Deck      []Card
+	Discard   []Card
+	Hands     map[string][]Card
+	Direction int
+	Playing   string // Player Id
+	Events    []string
+	Rand      *rand.Rand
+	State     State
+	Winner    string
+	rounds    int
 }
 
 func NewPlayer(name string) Player {
 	return Player{
-		Id:   RandomStringId("P"),
+		Id:   RandomStringId(name),
 		Name: name,
 	}
 }
@@ -107,7 +108,6 @@ func NewGame(players []Player, seed int64) *Game {
 
 	g.initDeck()
 	g.shuffle()
-	g.deal()
 
 	return g
 }
@@ -120,52 +120,34 @@ func NewCard(r Rank, c Color, n int) Card {
 	}
 }
 
-func (g *Game) initDeck() {
-	var Colors []Color = []Color{ColorRed, ColorYellow, ColorGreen, ColorBlue}
-	for i := 0; i < MAX_NUMBER; i++ {
-		for _, c := range Colors {
-			g.Deck = append(g.Deck, Card{
-				Color:  c,
-				Number: i,
-				Rank:   RankNumber,
-			})
-		}
-	}
-	g.Events = append(g.Events, fmt.Sprintf("Deck created %d", len(g.Deck)))
-}
-
-func (g *Game) shuffle() {
-	g.Rand.Shuffle(len(g.Deck), func(i, j int) { g.Deck[i], g.Deck[j] = g.Deck[j], g.Deck[i] })
-	g.Events = append(g.Events, "Deck suffled")
-}
-
-func (g *Game) canDraw() bool {
-	return len(g.Deck) > 0
-}
-func (g *Game) draw() (Card, error) {
-	var card Card
-	if !g.canDraw() {
-		return card, errors.New("Empty Deck")
-	}
-	card, g.Deck = g.Deck[len(g.Deck)-1], g.Deck[:len(g.Deck)-1]
-	return card, nil
-}
-
-func (g *Game) deal() {
-	for _, p := range g.Players {
-		g.Hands[p.Id] = []Card{}
-		for i := 0; i < MAX_CARDS_BY_PLAYER; i++ {
-			card, _ := g.draw()
-			g.Hands[p.Id] = append(g.Hands[p.Id], card)
-		}
-	}
-}
-
 func (g *Game) Start() {
-	g.CurrentCard, _ = g.draw()
-	g.Discard = append(g.Discard, g.CurrentCard)
+	g.deal()
+	card, _ := g.draw()
+	g.Discard = append(g.Discard, card)
 	g.Playing = g.Players[0].Id
 	g.State = StateStarted
+
+	g.log(fmt.Sprintf("Game started"))
+	g.log(fmt.Sprintf("Players %d: %v", len(g.Players), g.Players))
+	g.log(fmt.Sprintf("Turn of Player %s", g.Playing))
+	g.log(fmt.Sprintf("Current Card %v", card))
+}
+
+func (g *Game) CurrentCard() Card {
+	return g.Discard[len(g.Discard)-1]
+}
+func (g *Game) CurrentPlayer() Player {
+	var player Player
+	for _, p := range g.Players {
+		if p.Id == g.Playing {
+			player = p
+			break
+		}
+	}
+	return player
+}
+func (g *Game) GetPlayerHand(playerId string) []Card {
+	return g.Hands[playerId]
 }
 
 func (g *Game) Play(playerId string, card Card) error {
@@ -183,21 +165,93 @@ func (g *Game) Play(playerId string, card Card) error {
 	if found == -1 {
 		return errors.New("Card not found in your hand")
 	}
-	if !match(g.CurrentCard, card) {
+	if !match(g.CurrentCard(), card) {
 		return errors.New("Invalid card")
 	}
 
 	g.Hands[playerId] = append(hand[:found], hand[found+1:]...)
-
 	g.Discard = append(g.Discard, card)
-	g.CurrentCard = card
+
+	g.log(fmt.Sprintf("Player %s play Card %v. %d left cards", playerId, card, len(g.Hands[playerId])))
 
 	g.advanceTurn(1)
+	g.rounds++
 
 	if len(g.Hands[playerId]) == 0 {
+		g.Winner = playerId
 		g.Finish()
 	}
 	return nil
+}
+func (g *Game) Finish() {
+	g.State = StateFinished
+	g.log("Game Over")
+}
+
+func (g *Game) DrawCard(playerId string) {
+	if !g.canDraw() {
+		errors.New("Empty Deck")
+		g.log(fmt.Sprintf("Player %s draw card but deck is empty", playerId))
+	}
+	card, drawed := g.draw()
+	if drawed {
+		g.Hands[playerId] = append(g.Hands[playerId], card)
+		g.log(fmt.Sprintf("Player %s draw card %v", playerId, card))
+		g.log(fmt.Sprintf("%d cards left on deck", len(g.Deck)))
+	} else {
+		//TODO: check if someone can win
+		if !g.existPossibleWinner() {
+			g.log("Deck empty, not possible winner found")
+			g.log("Draw State")
+			g.Finish()
+		}
+	}
+	g.advanceTurn(1)
+	g.rounds++
+}
+func (g *Game) IsGameOver() bool {
+	if g.State == StateFinished {
+		return true
+	}
+
+	return false
+}
+func (g *Game) initDeck() {
+	var Colors []Color = []Color{ColorRed, ColorYellow, ColorGreen, ColorBlue}
+	for i := 0; i < MAX_NUMBER; i++ {
+		for _, c := range Colors {
+			card := NewCard(RankNumber, c, i)
+			g.Deck = append(g.Deck, card)
+		}
+	}
+	g.log(fmt.Sprintf("Deck created %d", len(g.Deck)))
+}
+
+func (g *Game) shuffle() {
+	g.Rand.Shuffle(len(g.Deck), func(i, j int) { g.Deck[i], g.Deck[j] = g.Deck[j], g.Deck[i] })
+	g.log("Deck suffled")
+}
+
+func (g *Game) canDraw() bool {
+	return len(g.Deck) > 0
+}
+func (g *Game) draw() (Card, bool) {
+	var card Card
+	if !g.canDraw() {
+		return card, false
+	}
+	card, g.Deck = g.Deck[len(g.Deck)-1], g.Deck[:len(g.Deck)-1]
+	return card, true
+}
+
+func (g *Game) deal() {
+	for _, p := range g.Players {
+		g.Hands[p.Id] = []Card{}
+		for i := 0; i < MAX_CARDS_BY_PLAYER; i++ {
+			card, _ := g.draw()
+			g.Hands[p.Id] = append(g.Hands[p.Id], card)
+		}
+	}
 }
 
 func (g *Game) advanceTurn(num int) {
@@ -211,11 +265,39 @@ func (g *Game) advanceTurn(num int) {
 	next := (index + g.Direction*num + len(g.Players)) % len(g.Players)
 
 	g.Playing = g.Players[next].Id
-	g.Events = append(g.Events, fmt.Sprintf("Advance %d turns. Now playing %s", num, g.Playing))
+	g.log(fmt.Sprintf("Advance %d turns", num))
+	g.log(fmt.Sprintf("Turn of Player %s", g.Playing))
+
 }
-func (g *Game) Finish() {
-	g.Events = append(g.Events, "Game Over")
-	g.State = StateFinished
+func (g *Game) log(ev string) {
+	fmt.Printf("-> %s\n", ev)
+	g.Events = append(g.Events, ev)
+}
+func (g *Game) PrintState() {
+	fmt.Printf("Cards discarded %d\n", len(g.Discard))
+	fmt.Printf("Cards on Deck %d\n", len(g.Deck))
+	fmt.Printf("Game direction %d\n", g.Direction)
+	fmt.Printf("Current card: %v\n", g.CurrentCard())
+	fmt.Printf("Current player: %v\n", g.CurrentPlayer())
+	fmt.Printf("Game rounds %d\n", g.rounds)
+
+	fmt.Println("Players:")
+	for _, p := range g.Players {
+		hand := g.GetPlayerHand(p.Id)
+		fmt.Printf("  Player %s. Cards: %v\n", p.Id, hand)
+	}
+
+}
+func (g *Game) existPossibleWinner() bool {
+	current := g.CurrentCard()
+	for _, p := range g.Players {
+		for _, card := range g.Hands[p.Id] {
+			if match(card, current) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func match(c1, c2 Card) bool {
@@ -226,17 +308,4 @@ func match(c1, c2 Card) bool {
 		return true
 	}
 	return false
-}
-
-func (g *Game) DrawCard(playerId string) error {
-	if !g.canDraw() {
-		errors.New("Empty Deck")
-	}
-	card, err := g.draw()
-	if err != nil {
-		return err
-	}
-	g.Hands[playerId] = append(g.Hands[playerId], card)
-	g.advanceTurn(1)
-	return nil
 }
