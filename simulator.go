@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func Simulate() {
-	g := NewGame(CreatePlayers(3), 29028993)
+func Simulate(players int) {
+	g := NewGame(CreatePlayers(players), time.Now().UnixNano())
 	g.Start()
 
 	for !g.IsGameOver() {

@@ -1,5 +1,5 @@
 package main
 
 func main() {
-	Simulate()
+	Simulate(4)
 }
