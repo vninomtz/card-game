@@ -69,11 +69,6 @@ type Card struct {
 	Number int
 }
 
-type Player struct {
-	Id   string
-	Name string
-}
-
 type Game struct {
 	Id        string
 	Players   []Player
@@ -87,13 +82,6 @@ type Game struct {
 	State     State
 	Winner    string
 	rounds    int
-}
-
-func NewPlayer(name string) Player {
-	return Player{
-		Id:   RandomStringId(name),
-		Name: name,
-	}
 }
 
 func NewGame(players []Player, seed int64) *Game {

@@ -1,5 +1,13 @@
 package main
 
+import "log"
+
 func main() {
-	Simulate(4)
+	srv := NewServer("", 8000)
+
+	err := srv.Run()
+
+	if err != nil {
+		log.Println(err)
+	}
 }
