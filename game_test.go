@@ -5,7 +5,7 @@ import (
 )
 
 func TestInitDeck(t *testing.T) {
-	g := NewGame(CreatePlayers(3), 10)
+	g := NewGame(10)
 	g.Start()
 
 	if g.CurrentCard().Id == "" {

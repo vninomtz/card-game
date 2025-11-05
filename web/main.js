@@ -16,6 +16,10 @@ const join = async (gameId, playerId) => {
   socket.addEventListener("error", () => {
     console.log("Connetion error");
   });
+  socket.addEventListener("message", (msg) => {
+    console.log(msg.data);
+    log(msg.data.action);
+  });
 };
 
 btncreate.onclick = async () => {

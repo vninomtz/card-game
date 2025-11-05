@@ -7,7 +7,14 @@ import (
 )
 
 func Simulate(players int) {
-	g := NewGame(CreatePlayers(players), time.Now().UnixNano())
+
+	ps := CreatePlayers(players)
+	g := NewGame(time.Now().UnixNano())
+
+	for _, p := range ps {
+		g.AddPlayer(p)
+	}
+
 	g.Start()
 
 	for !g.IsGameOver() {
@@ -42,11 +49,10 @@ func FindPlayableCard(deck []Card, toMatch Card) (bool, Card) {
 	}
 	return found, toPlay
 }
-func CreatePlayers(size int) []Player {
-	res := []Player{}
+func CreatePlayers(size int) []*Player {
+	res := []*Player{}
 	for i := 0; i <= size; i++ {
-		name := fmt.Sprintf("Player %d", i+1)
-		res = append(res, NewPlayer(name))
+		res = append(res, NewPlayer("Player"))
 	}
 	return res
 }

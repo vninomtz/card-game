@@ -6,6 +6,8 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+
+	gonanoid "github.com/matoous/go-nanoid/v2"
 )
 
 /*
@@ -71,7 +73,7 @@ type Card struct {
 
 type Game struct {
 	Id        string
-	Players   []Player
+	Players   []*Player
 	Deck      []Card
 	Discard   []Card
 	Hands     map[string][]Card
@@ -84,21 +86,19 @@ type Game struct {
 	rounds    int
 }
 
-func NewGame(players []Player, seed int64) *Game {
+func NewGame(seed int64) *Game {
+	id, _ := gonanoid.New(10)
 	g := &Game{
-		Id:        RandomStringId("G"),
-		Players:   players,
+		Id:        id,
+		Players:   []*Player{},
 		Direction: 1,
 		Rand:      rand.New(rand.NewSource(seed)),
 		Hands:     make(map[string][]Card),
 		State:     StateIdle,
 	}
-
-	g.initDeck()
-	g.shuffle()
-
 	return g
 }
+
 func NewCard(r Rank, c Color, n int) Card {
 	return Card{
 		Id:     fmt.Sprintf("%s_%s_%d", r, c, n),
@@ -106,6 +106,24 @@ func NewCard(r Rank, c Color, n int) Card {
 		Number: n,
 		Rank:   r,
 	}
+}
+
+func (g *Game) Init() {
+	g.initDeck()
+	g.shuffle()
+}
+
+func (g *Game) AddPlayer(p *Player) {
+	g.Players = append(g.Players, p)
+}
+
+func (g *Game) GetPlayer(playerId string) (*Player, error) {
+	for _, p := range g.Players {
+		if p.Id == playerId {
+			return p, nil
+		}
+	}
+	return nil, errors.New("Player not found")
 }
 
 func (g *Game) Start() {
@@ -124,8 +142,8 @@ func (g *Game) Start() {
 func (g *Game) CurrentCard() Card {
 	return g.Discard[len(g.Discard)-1]
 }
-func (g *Game) CurrentPlayer() Player {
-	var player Player
+func (g *Game) CurrentPlayer() *Player {
+	var player *Player
 	for _, p := range g.Players {
 		if p.Id == g.Playing {
 			player = p

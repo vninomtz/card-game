@@ -18,32 +18,8 @@ type GameServer struct {
 	unregister chan *Client
 	message    chan *Message
 	clients    map[*Client]bool
-	rooms      map[string]*Room
-}
-
-type Client struct {
-	conn     *websocket.Conn
-	playerId string
-	gameId   string
-}
-
-type Message struct {
-	Type     string `json:"type"`
-	Action   string `json:"action"`
-	PlayerId string
-	GameId   string
-}
-
-func NewClient(conn *websocket.Conn, playerId, gameId string) *Client {
-	return &Client{
-		conn:     conn,
-		playerId: playerId,
-		gameId:   gameId,
-	}
-}
-
-func (c *Client) ClientId() string {
-	return fmt.Sprintf("%s - %s", c.conn.RemoteAddr().Network(), c.conn.RemoteAddr().String())
+	rooms      map[string]*GameManager
+	manager    *GameManager
 }
 
 func NewServer(addr string, port int) *GameServer {
@@ -54,7 +30,8 @@ func NewServer(addr string, port int) *GameServer {
 		unregister: make(chan *Client),
 		message:    make(chan *Message),
 		clients:    make(map[*Client]bool),
-		rooms:      make(map[string]*Room),
+		rooms:      make(map[string]*GameManager),
+		manager:    NewGameManager(),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -72,7 +49,8 @@ func (s *GameServer) Address() string {
 func (s *GameServer) Run() error {
 	s.routes()
 
-	go s.run()
+	go s.manager.Run()
+
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil {
 		panic(err)
@@ -88,17 +66,17 @@ func (s *GameServer) routes() {
 			http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
 			return
 		}
-		room := NewRoom()
-		player := NewPlayer("Player")
-		room.Join(&player)
-		s.rooms[room.code] = room
+		gameId := s.manager.NewGame()
+
+		playerId, _ := s.manager.Join(gameId, "Player")
 
 		payload := map[string]string{
-			"gameId":   room.code,
-			"playerId": player.Id,
+			"gameId":   gameId,
+			"playerId": playerId,
 		}
 		respondWithJSON(w, http.StatusCreated, payload)
 	})
+
 	http.HandleFunc("/games/{gameId}/join", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if r.Method != http.MethodPost {
@@ -106,19 +84,19 @@ func (s *GameServer) routes() {
 			return
 		}
 		id := r.PathValue("gameId")
-		room, ok := s.rooms[id]
-		if !ok {
-			http.Error(w, "Game not found", http.StatusNotFound)
+		playerId, err := s.manager.Join(id, "Player")
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		player := NewPlayer("Player")
-		room.Join(&player)
 		payload := map[string]string{
-			"gameId":   room.code,
-			"playerId": player.Id,
+			"gameId":   id,
+			"playerId": playerId,
 		}
 		respondWithJSON(w, http.StatusCreated, payload)
 	})
+
 	http.HandleFunc("/games/{gameId}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if r.Method != http.MethodGet {
@@ -126,17 +104,20 @@ func (s *GameServer) routes() {
 			return
 		}
 		id := r.PathValue("gameId")
-		room, ok := s.rooms[id]
-		if !ok {
-			http.Error(w, "Game not found", http.StatusNotFound)
+
+		gm, err := s.manager.GetGame(id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+
 		payload := map[string]interface{}{
-			"joined":  len(room.players),
-			"players": room.players,
+			"joined":  len(gm.Players),
+			"players": gm.Players,
 		}
 		respondWithJSON(w, http.StatusOK, payload)
 	})
+
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		gameId := r.URL.Query().Get("gameId")
 		playerId := r.URL.Query().Get("playerId")
@@ -145,66 +126,20 @@ func (s *GameServer) routes() {
 			http.Error(w, "Missing params", http.StatusBadRequest)
 			return
 		}
-		_, ok := s.rooms[gameId]
-		if !ok {
-			http.Error(w, "Game not found", http.StatusNotFound)
-			return
-		}
-		_, ok = s.rooms[gameId].players[playerId]
-		if !ok {
-			http.Error(w, "Game not found", http.StatusNotFound)
-			return
-		}
 		ws, err := s.upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Println(err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		client := NewClient(ws, playerId, gameId)
-		s.register <- client
+		err = s.manager.ConnectPlayer(gameId, playerId, ws)
+		if err != nil {
+			http.Error(w, "Game not found", http.StatusNotFound)
+			return
+		}
 	})
 }
 
-func (s *GameServer) run() {
-	log.Printf("ServerManager: Listening for events")
-	for {
-		select {
-		case client := <-s.register:
-			s.clients[client] = true
-			go s.reader(client)
-			log.Printf("ServerManager: Client %s connected\n", client.ClientId())
-		case client := <-s.unregister:
-			if _, ok := s.clients[client]; ok {
-				delete(s.clients, client)
-				log.Printf("ServerManager: Client %s disconnected, %d connected clients", client.ClientId(), len(s.clients))
-			}
-		case msg := <-s.message:
-			log.Printf("ServerManager: Player %s send message %v", msg.PlayerId, msg)
-		}
-	}
-}
-func (s *GameServer) writer(client *Client) {
-
-}
-func (s *GameServer) reader(client *Client) {
-	defer func() {
-		client.conn.Close()
-		s.unregister <- client
-	}()
-	var msg *Message
-	for {
-		err := client.conn.ReadJSON(&msg)
-		if err != nil {
-			log.Printf("Error to read json: %v\n", err)
-			break
-		}
-		msg.PlayerId = client.playerId
-		msg.GameId = client.gameId
-		s.message <- msg
-	}
-
-}
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error {
 	response, err := json.Marshal(payload)
 	if err != nil {
