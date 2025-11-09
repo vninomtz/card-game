@@ -117,6 +117,30 @@ func (s *GameServer) routes() {
 		}
 		respondWithJSON(w, http.StatusOK, payload)
 	})
+	http.HandleFunc("/games/play", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
+			return
+		}
+		// id := r.PathValue("gameId")
+
+		// gm, err := s.manager.GetGame(id)
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusNotFound)
+		// 	return
+		// }
+		defer r.Body.Close()
+
+		messange := Message{}
+		if err := json.NewDecoder(r.Body).Decode(&messange); err != nil {
+			log.Printf("Error to read data: %v\n", err)
+		}
+
+		s.manager.ProcessMessage(messange)
+
+		respondWithJSON(w, http.StatusOK, nil)
+	})
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		gameId := r.URL.Query().Get("gameId")

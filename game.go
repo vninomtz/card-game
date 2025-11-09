@@ -108,7 +108,7 @@ func NewCard(r Rank, c Color, n int) Card {
 	}
 }
 
-func (g *Game) Init() {
+func (g *Game) init() {
 	g.initDeck()
 	g.shuffle()
 }
@@ -127,6 +127,7 @@ func (g *Game) GetPlayer(playerId string) (*Player, error) {
 }
 
 func (g *Game) Start() {
+	g.init()
 	g.deal()
 	card, _ := g.draw()
 	g.Discard = append(g.Discard, card)
@@ -205,7 +206,6 @@ func (g *Game) DrawCard(playerId string) {
 		g.log(fmt.Sprintf("Player %s draw card %v", playerId, card))
 		g.log(fmt.Sprintf("%d cards left on deck", len(g.Deck)))
 	} else {
-		//TODO: check if someone can win
 		if !g.existPossibleWinner() {
 			g.log("Deck empty, not possible winner found")
 			g.log("Draw State")
@@ -276,7 +276,7 @@ func (g *Game) advanceTurn(num int) {
 
 }
 func (g *Game) log(ev string) {
-	fmt.Printf("-> %s\n", ev)
+	fmt.Printf("-> Game[%s]: %s\n", g.Id, ev)
 	g.Events = append(g.Events, ev)
 }
 func (g *Game) PrintState() {

@@ -17,7 +17,7 @@ type Event struct {
 
 type Message struct {
 	Action   string `json:"action"`
-	CardId   string `json:"CardId"`
+	CardId   string `json:"cardId"`
 	PlayerId string `json:"playerId"`
 	GameId   string `json:"gameId"`
 }
@@ -79,6 +79,21 @@ func (r *GameManager) GetGame(id string) (*Game, error) {
 		return nil, errors.New("Game not found")
 	}
 	return gm, nil
+}
+
+func (r *GameManager) ProcessMessage(msg Message) {
+	gm, err := r.GetGame(msg.GameId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	switch msg.Action {
+	case "StartGame":
+		gm.Start()
+	default:
+		log.Println("Unknown Action")
+	}
 }
 
 func (r *GameManager) ConnectPlayer(gameId, playerId string, conn *websocket.Conn) error {
