@@ -20,22 +20,39 @@ func main() {
 	client.Start()
 }
 
+type Card struct {
+	Id     string `json:"id"`
+	Color  string `json:"color"`
+	Rank   string `json:"rank"`
+	Number int    `json:"number"`
+}
+
+type GameState struct {
+	Turn     string
+	PlayCard Card
+	Hand     []Card
+}
+
 type GameClient struct {
 	playerId string
 	gameId   string
 	conn     *websocket.Conn
 	event    chan string
+	state    GameState
 }
+
 type Message struct {
-	Action   string `json:"action"`
-	CardId   string `json:"cardId"`
-	PlayerId string `json:"playerId"`
-	GameId   string `json:"gameId"`
+	Action   string    `json:"action"`
+	CardId   string    `json:"cardId"`
+	PlayerId string    `json:"playerId"`
+	GameId   string    `json:"gameId"`
+	State    GameState `json:"state"`
 }
 
 func NewClient() *GameClient {
 	return &GameClient{
 		event: make(chan string),
+		state: GameState{},
 	}
 }
 
@@ -56,13 +73,16 @@ func (g *GameClient) reader() {
 	}()
 
 	for {
-		msg := map[string]string{}
+		msg := Message{}
 		err := g.conn.ReadJSON(&msg)
 		if err != nil {
 			log.Printf("Error to read json %v\n", err)
 			break
 		}
-		g.event <- msg["action"]
+		if msg.Action == "GameUpdate" {
+			g.state = msg.State
+		}
+		g.event <- msg.Action
 	}
 }
 
@@ -108,8 +128,46 @@ func (g *GameClient) ProcessInput(value string) {
 		g.JoinGame()
 	case "start":
 		g.StartGame()
+	case "show":
+		g.ShowState()
+	case "play":
+		if len(words) < 2 {
+			log.Println("Expected cardId")
+			return
+		}
+		g.PlayCard(words[1])
+	case "draw":
+		g.DrawCard()
 	default:
 		g.event <- "Unkonwn command"
+	}
+}
+func (g *GameClient) DrawCard() {
+	msg := Message{
+		Action:   "DrawCard",
+		CardId:   "",
+		PlayerId: g.playerId,
+		GameId:   g.gameId,
+	}
+	g.SendMessage(msg)
+}
+
+func (g *GameClient) PlayCard(cardId string) {
+	msg := Message{
+		Action:   "PlayCard",
+		CardId:   cardId,
+		PlayerId: g.playerId,
+		GameId:   g.gameId,
+	}
+	g.SendMessage(msg)
+}
+
+func (g *GameClient) ShowState() {
+	fmt.Printf("Playing: %s\n", g.state.Turn)
+	fmt.Printf("Card: %v\n", g.state.PlayCard)
+	fmt.Println("Hand:")
+	for _, c := range g.state.Hand {
+		fmt.Printf("-> CardId: %s, Color: %s, Number: %d\n", c.Id, c.Color, c.Number)
 	}
 }
 
@@ -168,6 +226,25 @@ func (g *GameClient) StartGame() {
 		GameId:   g.gameId,
 	}
 
+	g.SendMessage(msg)
+	// b, err := json.Marshal(msg)
+	// if err != nil {
+	// 	log.Println("Error to serialize json")
+	// 	return
+	// }
+	//
+	// body := bytes.NewBuffer(b)
+	// r, err := http.Post("http://localhost:8000/games/play", "application/json", body)
+	//
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return
+	// }
+	//
+	// log.Printf("Play response %s\n", r.Status)
+}
+
+func (g *GameClient) SendMessage(msg Message) {
 	b, err := json.Marshal(msg)
 	if err != nil {
 		log.Println("Error to serialize json")

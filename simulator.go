@@ -22,7 +22,7 @@ func Simulate(players int) {
 		hand := g.GetPlayerHand(player.Id)
 		has, card := FindPlayableCard(hand, g.CurrentCard())
 		if has {
-			err := g.Play(player.Id, card)
+			err := g.Play(player.Id, card.Id)
 			if err != nil {
 				log.Printf("Player %s play %v, got error %v\n", player.Id, card, err)
 			}
@@ -37,8 +37,8 @@ func Simulate(players int) {
 
 }
 
-func FindPlayableCard(deck []Card, toMatch Card) (bool, Card) {
-	var toPlay Card
+func FindPlayableCard(deck []*Card, toMatch *Card) (bool, *Card) {
+	var toPlay *Card
 	found := false
 	for _, c := range deck {
 		if match(c, toMatch) {

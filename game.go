@@ -65,18 +65,18 @@ func RandomStringId(prefix string) string {
 }
 
 type Card struct {
-	Id     string
-	Color  Color
-	Rank   Rank
-	Number int
+	Id     string `json:"id"`
+	Color  Color  `json:"color"`
+	Rank   Rank   `json:"rank"`
+	Number int    `json:"number"`
 }
 
 type Game struct {
 	Id        string
 	Players   []*Player
-	Deck      []Card
-	Discard   []Card
-	Hands     map[string][]Card
+	Deck      []*Card
+	Discard   []*Card
+	Hands     map[string][]*Card
 	Direction int
 	Playing   string // Player Id
 	Events    []string
@@ -93,15 +93,16 @@ func NewGame(seed int64) *Game {
 		Players:   []*Player{},
 		Direction: 1,
 		Rand:      rand.New(rand.NewSource(seed)),
-		Hands:     make(map[string][]Card),
+		Hands:     make(map[string][]*Card),
 		State:     StateIdle,
 	}
 	return g
 }
 
-func NewCard(r Rank, c Color, n int) Card {
-	return Card{
-		Id:     fmt.Sprintf("%s_%s_%d", r, c, n),
+func NewCard(r Rank, c Color, n int) *Card {
+	id, _ := gonanoid.New(10)
+	return &Card{
+		Id:     id,
 		Color:  c,
 		Number: n,
 		Rank:   r,
@@ -140,7 +141,10 @@ func (g *Game) Start() {
 	g.log(fmt.Sprintf("Current Card %v", card))
 }
 
-func (g *Game) CurrentCard() Card {
+func (g *Game) CurrentCard() *Card {
+	if len(g.Discard) == 0 {
+		return nil
+	}
 	return g.Discard[len(g.Discard)-1]
 }
 func (g *Game) CurrentPlayer() *Player {
@@ -153,19 +157,21 @@ func (g *Game) CurrentPlayer() *Player {
 	}
 	return player
 }
-func (g *Game) GetPlayerHand(playerId string) []Card {
+func (g *Game) GetPlayerHand(playerId string) []*Card {
 	return g.Hands[playerId]
 }
 
-func (g *Game) Play(playerId string, card Card) error {
+func (g *Game) Play(playerId string, cardId string) error {
 	if g.Playing != playerId {
 		return errors.New("Invalid turn")
 	}
 	hand := g.Hands[playerId]
 	found := -1
+	var card *Card
 	for i, c := range hand {
-		if c.Id == card.Id {
+		if c.Id == cardId {
 			found = i
+			card = c
 			break
 		}
 	}
@@ -241,10 +247,10 @@ func (g *Game) shuffle() {
 func (g *Game) canDraw() bool {
 	return len(g.Deck) > 0
 }
-func (g *Game) draw() (Card, bool) {
-	var card Card
+func (g *Game) draw() (*Card, bool) {
+	var card *Card
 	if !g.canDraw() {
-		return card, false
+		return nil, false
 	}
 	card, g.Deck = g.Deck[len(g.Deck)-1], g.Deck[:len(g.Deck)-1]
 	return card, true
@@ -252,7 +258,7 @@ func (g *Game) draw() (Card, bool) {
 
 func (g *Game) deal() {
 	for _, p := range g.Players {
-		g.Hands[p.Id] = []Card{}
+		g.Hands[p.Id] = []*Card{}
 		for i := 0; i < MAX_CARDS_BY_PLAYER; i++ {
 			card, _ := g.draw()
 			g.Hands[p.Id] = append(g.Hands[p.Id], card)
@@ -306,7 +312,7 @@ func (g *Game) existPossibleWinner() bool {
 	return false
 }
 
-func match(c1, c2 Card) bool {
+func match(c1, c2 *Card) bool {
 	if c1.Color == c2.Color {
 		return true
 	}

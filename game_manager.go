@@ -16,10 +16,16 @@ type Event struct {
 }
 
 type Message struct {
-	Action   string `json:"action"`
-	CardId   string `json:"cardId"`
-	PlayerId string `json:"playerId"`
-	GameId   string `json:"gameId"`
+	Action   string     `json:"action"`
+	CardId   string     `json:"cardId"`
+	PlayerId string     `json:"playerId"`
+	GameId   string     `json:"gameId"`
+	State    *GameState `json:"state"`
+}
+type GameState struct {
+	Turn     string
+	PlayCard *Card
+	Hand     []*Card
 }
 
 type GameManager struct {
@@ -82,17 +88,62 @@ func (r *GameManager) GetGame(id string) (*Game, error) {
 }
 
 func (r *GameManager) ProcessMessage(msg Message) {
+
+	switch msg.Action {
+	case "StartGame":
+		r.StartGame(msg)
+	case "PlayCard":
+		r.PlayCard(msg)
+	case "DrawCard":
+		r.DrawCard(msg)
+	default:
+		log.Println("Unknown Action")
+	}
+}
+
+func (r *GameManager) PlayCard(msg Message) {
 	gm, err := r.GetGame(msg.GameId)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+	gm.Play(msg.PlayerId, msg.CardId)
+	r.SendGameState(gm)
+}
+func (r *GameManager) DrawCard(msg Message) {
+	gm, err := r.GetGame(msg.GameId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	gm.DrawCard(msg.PlayerId)
+	r.SendGameState(gm)
+}
 
-	switch msg.Action {
-	case "StartGame":
-		gm.Start()
-	default:
-		log.Println("Unknown Action")
+func (r *GameManager) StartGame(msg Message) {
+	gm, err := r.GetGame(msg.GameId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	gm.PrintState()
+	gm.Start()
+
+	r.SendGameState(gm)
+}
+
+func (r *GameManager) SendGameState(gm *Game) {
+	for _, p := range gm.Players {
+		state := &GameState{}
+		state.Turn = gm.CurrentPlayer().Id
+		state.PlayCard = gm.CurrentCard()
+		state.Hand = gm.GetPlayerHand(p.Id)
+		p.client.Out <- &Message{
+			Action:   "GameUpdate",
+			GameId:   gm.Id,
+			PlayerId: p.Id,
+			State:    state,
+		}
 	}
 }
 
