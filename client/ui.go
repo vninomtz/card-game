@@ -129,10 +129,11 @@ func (a *App) handleEvent(ev string) {
 
 func (a *App) MainMenu() {
 	fmt.Println("CLI UNO GAME")
-	fmt.Println("Menu:")
-	fmt.Println("- Create")
-	fmt.Println("- Join")
-	fmt.Println("- Exit")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("- create")
+	fmt.Println("- join <gameId>")
+	fmt.Println("- exit")
 	fmt.Println()
 	fmt.Print("> ")
 }
@@ -143,9 +144,9 @@ func (a *App) LobbyGame() {
 	fmt.Printf("Players: %d\n", a.game.state.Players)
 	fmt.Println("Waiting for more players...")
 	fmt.Println()
-	fmt.Println("Menu:")
-	fmt.Println("- Start")
-	fmt.Println("- Exit")
+	fmt.Println("Commands:")
+	fmt.Println("- start")
+	fmt.Println("- exit")
 	fmt.Println()
 	fmt.Print("> ")
 }
@@ -156,15 +157,16 @@ func (a *App) ShowGameEnd() {
 	fmt.Printf("Winner Player %s \n", a.game.state.Winner)
 	fmt.Println()
 	fmt.Println("Menu:")
-	fmt.Println("- Home")
-	fmt.Println("- Exit")
+	fmt.Println("- home")
+	fmt.Println("- exit")
 	fmt.Println()
 	fmt.Print("> ")
 
 }
 
 func (a *App) ShowGame() {
-	fmt.Printf("CLI UNO GAME Game: %s   Player: %s\n", a.game.gameId, a.game.playerId)
+	fmt.Println("CLI UNO GAME")
+	fmt.Printf("Game: %s   Player: %s\n", a.game.gameId, a.game.playerId)
 	fmt.Printf("Players: %d\n", a.game.state.Players)
 	fmt.Print("Turn: ")
 	if a.game.playerId == a.game.state.Turn {
@@ -180,10 +182,10 @@ func (a *App) ShowGame() {
 	}
 
 	fmt.Println()
-	fmt.Println("Menu:")
-	fmt.Println("- Play {index of card}")
-	fmt.Println("- Draw")
-	fmt.Println("- Exit")
+	fmt.Println("Commands:")
+	fmt.Println("- play <index of card>")
+	fmt.Println("- draw")
+	fmt.Println("- exit")
 	fmt.Println()
 	fmt.Print("> ")
 }
