@@ -25,10 +25,6 @@ func (c *config) Load() error {
 
 	logfile := os.Getenv(fmt.Sprintf("%s_LOG_FILE", c.Prefix))
 
-	if c.Host == "" {
-		c.Host = "127.0.0.1"
-	}
-
 	if c.Port == "" {
 		c.Port = "8000"
 	}
