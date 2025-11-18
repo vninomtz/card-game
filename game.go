@@ -101,6 +101,10 @@ func (g *Game) GetPlayer(playerId string) (*Player, error) {
 	return nil, errors.New("Player not found")
 }
 
+func (g *Game) GetWinner() string {
+	return g.Winner
+}
+
 func (g *Game) Start() {
 	g.initDeck()
 	g.shuffle()
@@ -264,7 +268,7 @@ func (g *Game) advanceTurn(num int) {
 }
 
 func (g *Game) log(ev string) {
-	// fmt.Printf("-> Game[%s]: %s\n", g.Id, ev)
+	fmt.Printf("-> Game[%s]: %s\n", g.Id, ev)
 	g.Events = append(g.Events, ev)
 	//TODO: Maybe put here the logic to send the events to a channel
 }

@@ -26,6 +26,7 @@ type GameState struct {
 	Turn     string
 	PlayCard *Card
 	Hand     []*Card
+	Winner   string
 }
 
 type GameManager struct {
@@ -94,6 +95,19 @@ func (r *GameManager) playCard(gameId, playerId, cardId string) {
 		return
 	}
 	gm.Play(playerId, cardId)
+
+	if gm.State == StateFinished {
+		winner := gm.GetWinner()
+		msg := Message{
+			Action: "GameFinished",
+			GameId: gameId,
+			State: &GameState{
+				Winner: winner,
+			},
+		}
+		r.Broadcast(gm, &msg)
+	}
+
 	r.SendGameState(gm)
 }
 func (r *GameManager) drawCard(gameId, playerId string) {
@@ -119,12 +133,16 @@ func (r *GameManager) StartGame(gameId string) {
 		Action: "GameStarted",
 		GameId: gameId,
 	}
+	r.Broadcast(gm, &msg)
+	r.SendGameState(gm)
+}
+
+func (r *GameManager) Broadcast(gm *Game, msg *Message) {
 	for _, p := range gm.Players {
 		if p.connected {
-			p.Send(&msg)
+			p.Send(msg)
 		}
 	}
-	r.SendGameState(gm)
 }
 
 func (r *GameManager) SendGameState(gm *Game) {
@@ -135,6 +153,7 @@ func (r *GameManager) SendGameState(gm *Game) {
 			state.Turn = gm.CurrentPlayer().Id
 			state.PlayCard = gm.CurrentCard()
 			state.Hand = gm.GetPlayerHand(p.Id)
+			state.Winner = gm.GetWinner()
 
 			p.eventch <- &Message{
 				Action:   "GameUpdated",

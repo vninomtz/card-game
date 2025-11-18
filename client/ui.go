@@ -16,6 +16,7 @@ const (
 	StateJoinGame
 	StateLobby
 	StateGame
+	StateGameFinished
 	StateExit
 )
 
@@ -66,6 +67,8 @@ func (a *App) render() {
 		a.LobbyGame()
 	case StateGame:
 		a.ShowGame()
+	case StateGameFinished:
+		a.ShowGameEnd()
 	case StateExit:
 		fmt.Println("Bye!")
 	}
@@ -107,6 +110,8 @@ func (a *App) handleInput(input string) {
 		a.game.PlayCard(index)
 	case "draw":
 		a.game.DrawCard()
+	case "home":
+		a.State = StateMainMenu
 	case "exit":
 		a.State = StateExit
 		os.Exit(0)
@@ -116,6 +121,9 @@ func (a *App) handleInput(input string) {
 func (a *App) handleEvent(ev string) {
 	if ev == "GameStarted" {
 		a.State = StateGame
+	}
+	if ev == "GameFinished" {
+		a.State = StateGameFinished
 	}
 }
 
@@ -142,10 +150,28 @@ func (a *App) LobbyGame() {
 	fmt.Print("> ")
 }
 
+func (a *App) ShowGameEnd() {
+	fmt.Println("CLI UNO GAME")
+	fmt.Printf("Game: %s finished\n", a.game.gameId)
+	fmt.Printf("Winner Player %s \n", a.game.state.Winner)
+	fmt.Println()
+	fmt.Println("Menu:")
+	fmt.Println("- Home")
+	fmt.Println("- Exit")
+	fmt.Println()
+	fmt.Print("> ")
+
+}
+
 func (a *App) ShowGame() {
 	fmt.Printf("CLI UNO GAME Game: %s   Player: %s\n", a.game.gameId, a.game.playerId)
 	fmt.Printf("Players: %d\n", a.game.state.Players)
-	fmt.Printf("Turn Player: %s\n", a.game.state.Turn)
+	fmt.Print("Turn: ")
+	if a.game.playerId == a.game.state.Turn {
+		fmt.Printf("Your turn\n")
+	} else {
+		fmt.Printf("Player %s\n", a.game.state.Turn)
+	}
 	fmt.Printf("Current Card: %d %s", a.game.state.PlayCard.Number, a.game.state.PlayCard.Color)
 	fmt.Println()
 	fmt.Println("Hand:")

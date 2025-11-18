@@ -4,75 +4,70 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
-
-	"github.com/gorilla/websocket"
+	// "time"
 )
 
 type GameServer struct {
-	address    string
-	port       int
-	upgrader   websocket.Upgrader
 	register   chan *Client
 	unregister chan *Client
 	message    chan *Message
 	clients    map[*Client]bool
 	rooms      map[string]*GameManager
 	manager    *GameManager
+	cfg        *config
 }
 
-func NewServer(addr string, port int) *GameServer {
+func NewServer(cfg *config) *GameServer {
 	return &GameServer{
-		address:    addr,
-		port:       port,
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		message:    make(chan *Message),
 		clients:    make(map[*Client]bool),
 		rooms:      make(map[string]*GameManager),
 		manager:    NewGameManager(),
-		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
-		},
+		cfg:        cfg,
 	}
 }
 
 func (s *GameServer) Address() string {
-	return fmt.Sprintf("%s:%d", s.address, s.port)
+	return s.cfg.Addr()
 }
 
 func (s *GameServer) Run() error {
-	s.routes()
+	mux := http.NewServeMux()
+	s.routes(mux)
 
 	go s.manager.Run()
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
-	if err != nil {
-		panic(err)
+	srv := &http.Server{
+		Addr:    s.cfg.Addr(),
+		Handler: s.middlewareCORS(mux),
+		// ReadTimeout:  5 * time.Second,
+		// WriteTimeout: 10 * time.Second,
+		// IdleTimeout:  15 * time.Second,
 	}
-	log.Printf("Starting Server on %s ...\n", s.Address())
-	return http.Serve(listener, nil)
+
+	log.Printf("Server is running at %s\n", s.cfg.Addr())
+	return srv.ListenAndServe()
 }
 
-func (s *GameServer) routes() {
-	http.HandleFunc("/games", s.HandleCreateGame)
-	http.HandleFunc("/games/{gameId}/join", s.HandleJoinGame)
-	http.HandleFunc("/games/{gameId}/start", s.HandleStartGame)
-	http.HandleFunc("/games/{gameId}/players/{playerId}/events", s.HandlePlayerEvents)
-	http.HandleFunc("/games/{gameId}/players/{playerId}/play", s.HandlePlayCard)
+func (s *GameServer) routes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /games", s.HandleCreateGame)
+	mux.HandleFunc("POST /games/{gameId}/join", s.HandleJoinGame)
+	mux.HandleFunc("POST /games/{gameId}/start", s.HandleStartGame)
+	mux.HandleFunc("GET /games/{gameId}/players/{playerId}/events", s.HandlePlayerEvents)
+	mux.HandleFunc("POST /games/{gameId}/players/{playerId}/play", s.HandlePlayCard)
+}
+
+func (s *GameServer) middlewareCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *GameServer) HandleCreateGame(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
-		return
-	}
 	gameId := s.manager.NewGame()
 	playerId, _ := s.manager.Join(gameId, "Player")
 	payload := map[string]string{
@@ -83,11 +78,6 @@ func (s *GameServer) HandleCreateGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *GameServer) HandleJoinGame(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
-		return
-	}
 	id := r.PathValue("gameId")
 	playerId, err := s.manager.Join(id, "Player")
 
@@ -103,11 +93,6 @@ func (s *GameServer) HandleJoinGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *GameServer) HandlePlayCard(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
-		return
-	}
 	defer r.Body.Close()
 
 	messange := Message{}
@@ -119,11 +104,6 @@ func (s *GameServer) HandlePlayCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *GameServer) HandleStartGame(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
-		return
-	}
 	gameId := r.PathValue("gameId")
 
 	defer r.Body.Close()
@@ -132,11 +112,6 @@ func (s *GameServer) HandleStartGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *GameServer) HandlePlayerEvents(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -188,7 +163,6 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(code)
 	w.Write(response)
 	return nil

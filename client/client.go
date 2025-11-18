@@ -20,6 +20,7 @@ type GameState struct {
 	Turn     string
 	PlayCard Card
 	Hand     []Card
+	Winner   string
 }
 
 type GameClient struct {

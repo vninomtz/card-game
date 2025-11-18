@@ -1,13 +1,22 @@
 package main
 
-import "log"
+import (
+	"log"
+	"net/http"
+	"os"
+)
 
 func main() {
-	srv := NewServer("", 8000)
-
-	err := srv.Run()
-
+	cfg := NewConfig()
+	err := cfg.Load()
 	if err != nil {
-		log.Println(err)
+		log.Fatalf("Error to load config: %v", err)
+		os.Exit(1)
+	}
+
+	srv := NewServer(cfg)
+
+	if err := srv.Run(); err != nil && err != http.ErrServerClosed {
+		log.Printf("Could not start the server: %v\n", err)
 	}
 }
