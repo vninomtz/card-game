@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"strings"
-	"time"
 
 	gonanoid "github.com/matoous/go-nanoid/v2"
 )
@@ -42,27 +40,8 @@ const (
 	StateFinished State = "finished"
 )
 
-const (
-	// YYYY-MM-DD: 2022-03-23
-	YYYYMMDD = "2006-01-02"
-	// 24h hh:mm:ss: 14:23:20
-	HHMMSS24h = "15:04:05"
-)
 const MAX_NUMBER = 10
 const MAX_CARDS_BY_PLAYER = 7
-
-func newTimeId() string {
-	t := time.Now()
-	date := strings.Join(strings.Split(t.Format(YYYYMMDD), "-"), "")
-	timeF := strings.Join(strings.Split(t.Format(HHMMSS24h), ":"), "")
-	return fmt.Sprintf("%s%s", date, timeF)
-}
-
-func RandomStringId(prefix string) string {
-	id := fmt.Sprintf("%s_%s", prefix, newTimeId())
-	num := rand.Intn(len(id))
-	return fmt.Sprintf("%s-%d", id, num)
-}
 
 type Card struct {
 	Id     string `json:"id"`
@@ -109,11 +88,6 @@ func NewCard(r Rank, c Color, n int) *Card {
 	}
 }
 
-func (g *Game) init() {
-	g.initDeck()
-	g.shuffle()
-}
-
 func (g *Game) AddPlayer(p *Player) {
 	g.Players = append(g.Players, p)
 }
@@ -128,7 +102,8 @@ func (g *Game) GetPlayer(playerId string) (*Player, error) {
 }
 
 func (g *Game) Start() {
-	g.init()
+	g.initDeck()
+	g.shuffle()
 	g.deal()
 	card, _ := g.draw()
 	g.Discard = append(g.Discard, card)
@@ -147,6 +122,7 @@ func (g *Game) CurrentCard() *Card {
 	}
 	return g.Discard[len(g.Discard)-1]
 }
+
 func (g *Game) CurrentPlayer() *Player {
 	var player *Player
 	for _, p := range g.Players {
@@ -157,6 +133,7 @@ func (g *Game) CurrentPlayer() *Player {
 	}
 	return player
 }
+
 func (g *Game) GetPlayerHand(playerId string) []*Card {
 	return g.Hands[playerId]
 }
@@ -185,7 +162,7 @@ func (g *Game) Play(playerId string, cardId string) error {
 	g.Hands[playerId] = append(hand[:found], hand[found+1:]...)
 	g.Discard = append(g.Discard, card)
 
-	g.log(fmt.Sprintf("Player %s play Card %v. %d left cards", playerId, card, len(g.Hands[playerId])))
+	g.log(fmt.Sprintf("Player %s play Card[%s] %s %s. %d left cards", playerId, card.Id, card.Color, card.Number, len(g.Hands[playerId])))
 
 	g.advanceTurn(1)
 	g.rounds++
@@ -196,6 +173,7 @@ func (g *Game) Play(playerId string, cardId string) error {
 	}
 	return nil
 }
+
 func (g *Game) Finish() {
 	g.State = StateFinished
 	g.log("Game Over")
@@ -203,8 +181,8 @@ func (g *Game) Finish() {
 
 func (g *Game) DrawCard(playerId string) {
 	if !g.canDraw() {
-		errors.New("Empty Deck")
 		g.log(fmt.Sprintf("Player %s draw card but deck is empty", playerId))
+		return
 	}
 	card, drawed := g.draw()
 	if drawed {
@@ -221,6 +199,7 @@ func (g *Game) DrawCard(playerId string) {
 	g.advanceTurn(1)
 	g.rounds++
 }
+
 func (g *Game) IsGameOver() bool {
 	if g.State == StateFinished {
 		return true
@@ -228,6 +207,7 @@ func (g *Game) IsGameOver() bool {
 
 	return false
 }
+
 func (g *Game) initDeck() {
 	var Colors []Color = []Color{ColorRed, ColorYellow, ColorGreen, ColorBlue}
 	for i := 0; i < MAX_NUMBER; i++ {
@@ -247,6 +227,7 @@ func (g *Game) shuffle() {
 func (g *Game) canDraw() bool {
 	return len(g.Deck) > 0
 }
+
 func (g *Game) draw() (*Card, bool) {
 	var card *Card
 	if !g.canDraw() {
@@ -281,10 +262,13 @@ func (g *Game) advanceTurn(num int) {
 	g.log(fmt.Sprintf("Turn of Player %s", g.Playing))
 
 }
+
 func (g *Game) log(ev string) {
-	fmt.Printf("-> Game[%s]: %s\n", g.Id, ev)
+	// fmt.Printf("-> Game[%s]: %s\n", g.Id, ev)
 	g.Events = append(g.Events, ev)
+	//TODO: Maybe put here the logic to send the events to a channel
 }
+
 func (g *Game) PrintState() {
 	fmt.Printf("Cards discarded %d\n", len(g.Discard))
 	fmt.Printf("Cards on Deck %d\n", len(g.Deck))
@@ -300,6 +284,7 @@ func (g *Game) PrintState() {
 	}
 
 }
+
 func (g *Game) existPossibleWinner() bool {
 	current := g.CurrentCard()
 	for _, p := range g.Players {

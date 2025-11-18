@@ -8,9 +8,12 @@ import (
 )
 
 type Player struct {
-	Id     string
-	Name   string
-	client *Client
+	Id        string
+	Name      string
+	client    *Client
+	eventch   chan *Message
+	connected bool
+	history   []*Message
 }
 
 type Client struct {
@@ -37,5 +40,20 @@ func NewPlayer(name string) *Player {
 		Id:     id,
 		Name:   fmt.Sprintf("%s %s", name, id),
 		client: nil,
+	}
+}
+
+func (p *Player) Connect() {
+	p.connected = true
+	p.eventch = make(chan *Message)
+}
+func (p *Player) Disconnect() {
+	p.connected = false
+	close(p.eventch)
+}
+func (p *Player) Send(msg *Message) {
+	p.history = append(p.history, msg)
+	if p.connected {
+		p.eventch <- msg
 	}
 }

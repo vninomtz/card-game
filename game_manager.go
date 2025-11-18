@@ -4,8 +4,6 @@ import (
 	"errors"
 	"log"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 type Event struct {
@@ -22,7 +20,9 @@ type Message struct {
 	GameId   string     `json:"gameId"`
 	State    *GameState `json:"state"`
 }
+
 type GameState struct {
+	Players  int
 	Turn     string
 	PlayCard *Card
 	Hand     []*Card
@@ -43,22 +43,10 @@ func NewGameManager() *GameManager {
 }
 
 func (r *GameManager) Run() {
-	log.Printf("GameManager: Listening for events")
 	for {
 		select {
 		case ev := <-r.event:
-			log.Printf("%v\n", ev)
-			if ev.Type == "PlayerConnected" {
-				r.onPlayerConnect(ev)
-			}
-		}
-	}
-}
-func (r *GameManager) onPlayerConnect(ev *Event) {
-	game, _ := r.games[ev.GameId]
-	for _, p := range game.Players {
-		if p.client != nil {
-			p.client.Out <- &Message{Action: ev.Type}
+			log.Printf("Event: %s on Game %s executed by Player %s", ev.Type, ev.GameId, ev.PlayerId)
 		}
 	}
 }
@@ -70,6 +58,7 @@ func (r *GameManager) Join(gameId string, username string) (string, error) {
 	}
 	player := NewPlayer(username)
 	gm.AddPlayer(player)
+	// TODO: Send event
 	return player.Id, nil
 }
 
@@ -88,122 +77,104 @@ func (r *GameManager) GetGame(id string) (*Game, error) {
 }
 
 func (r *GameManager) ProcessMessage(msg Message) {
-
 	switch msg.Action {
-	case "StartGame":
-		r.StartGame(msg)
 	case "PlayCard":
-		r.PlayCard(msg)
+		r.playCard(msg.GameId, msg.PlayerId, msg.CardId)
 	case "DrawCard":
-		r.DrawCard(msg)
+		r.drawCard(msg.GameId, msg.PlayerId)
 	default:
 		log.Println("Unknown Action")
 	}
 }
 
-func (r *GameManager) PlayCard(msg Message) {
-	gm, err := r.GetGame(msg.GameId)
+func (r *GameManager) playCard(gameId, playerId, cardId string) {
+	gm, err := r.GetGame(gameId)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	gm.Play(msg.PlayerId, msg.CardId)
+	gm.Play(playerId, cardId)
 	r.SendGameState(gm)
 }
-func (r *GameManager) DrawCard(msg Message) {
-	gm, err := r.GetGame(msg.GameId)
+func (r *GameManager) drawCard(gameId, playerId string) {
+	gm, err := r.GetGame(gameId)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	gm.DrawCard(msg.PlayerId)
+	gm.DrawCard(playerId)
 	r.SendGameState(gm)
 }
 
-func (r *GameManager) StartGame(msg Message) {
-	gm, err := r.GetGame(msg.GameId)
+func (r *GameManager) StartGame(gameId string) {
+	gm, err := r.GetGame(gameId)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	gm.PrintState()
 	gm.Start()
+	// TODO: Send event
 
+	msg := Message{
+		Action: "GameStarted",
+		GameId: gameId,
+	}
+	for _, p := range gm.Players {
+		if p.connected {
+			p.Send(&msg)
+		}
+	}
 	r.SendGameState(gm)
 }
 
 func (r *GameManager) SendGameState(gm *Game) {
 	for _, p := range gm.Players {
-		state := &GameState{}
-		state.Turn = gm.CurrentPlayer().Id
-		state.PlayCard = gm.CurrentCard()
-		state.Hand = gm.GetPlayerHand(p.Id)
-		p.client.Out <- &Message{
-			Action:   "GameUpdate",
-			GameId:   gm.Id,
-			PlayerId: p.Id,
-			State:    state,
+		if p.connected {
+			state := &GameState{}
+			state.Players = len(gm.Players)
+			state.Turn = gm.CurrentPlayer().Id
+			state.PlayCard = gm.CurrentCard()
+			state.Hand = gm.GetPlayerHand(p.Id)
+
+			p.eventch <- &Message{
+				Action:   "GameUpdated",
+				GameId:   gm.Id,
+				PlayerId: p.Id,
+				State:    state,
+			}
 		}
 	}
 }
 
-func (r *GameManager) ConnectPlayer(gameId, playerId string, conn *websocket.Conn) error {
+func (r *GameManager) PlayerConnected(gameId string, player *Player) error {
 	gm, err := r.GetGame(gameId)
 	if err != nil {
 		return err
 	}
-	player, err := gm.GetPlayer(playerId)
-	if err != nil {
-		return err
+	msg := Message{
+		Action:   "PlayerConnected",
+		GameId:   gameId,
+		PlayerId: player.Id,
+		State: &GameState{
+			Players: len(gm.Players),
+		},
 	}
-	player.client = NewClient(conn)
-
-	log.Printf("Connecting %s...\n", playerId)
-
-	r.event <- &Event{Type: "PlayerConnected", PlayerId: playerId, GameId: gameId}
-	go r.reader(gameId, player)
-	go r.writer(gameId, player)
-
+	for _, p := range gm.Players {
+		if p.connected {
+			p.Send(&msg)
+		}
+	}
 	return nil
 }
 
-func (r *GameManager) writer(gameId string, p *Player) {
-	defer func() {
-		p.client.conn.Close()
-		r.event <- &Event{Type: "PlayerDisconnected", PlayerId: p.Id, GameId: gameId}
-	}()
-
-	for {
-		select {
-		case msg := <-p.client.Out:
-			err := p.client.conn.WriteJSON(msg)
-			if err != nil {
-				log.Printf("Writer: error writing to Player %s, client %s\n", p.Id, p.client.ClientId())
-				return
-			}
-		}
+func (r *GameManager) FindUser(gameId, playerId string) (*Player, error) {
+	gm, err := r.GetGame(gameId)
+	if err != nil {
+		return nil, err
 	}
-
-}
-
-func (r *GameManager) reader(gameId string, p *Player) {
-	defer func() {
-		p.client.conn.Close()
-		r.event <- &Event{Type: "PlayerDisconnected", PlayerId: p.Id, GameId: gameId}
-	}()
-
-	for {
-		var msg *Message
-		err := p.client.conn.ReadJSON(&msg)
-		if err != nil {
-			log.Printf("Error to read json: %v\n", err)
-			break
-		}
-		r.event <- &Event{
-			Type:     "Movement",
-			PlayerId: p.Id,
-			GameId:   gameId,
-			Message:  msg,
-		}
+	player, err := gm.GetPlayer(playerId)
+	if err != nil {
+		return nil, err
 	}
+	return player, nil
 }
