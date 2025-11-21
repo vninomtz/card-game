@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"errors"
@@ -20,20 +20,6 @@ Rules:
 - Numbers: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
 */
 
-type Color string
-type Rank string
-type State string
-
-const (
-	ColorRed    Color = "red"
-	ColorYellow Color = "yellow"
-	ColorGreen  Color = "green"
-	ColorBlue   Color = "blue"
-	ColorBlack  Color = "black"
-)
-const (
-	RankNumber Rank = "number"
-)
 const (
 	StateIdle     State = "idle"
 	StateStarted  State = "started"
@@ -43,17 +29,9 @@ const (
 const MAX_NUMBER = 10
 const MAX_CARDS_BY_PLAYER = 7
 
-type Card struct {
-	Id     string `json:"id"`
-	Color  Color  `json:"color"`
-	Rank   Rank   `json:"rank"`
-	Number int    `json:"number"`
-}
-
 type Game struct {
 	Id        string
 	Players   []*Player
-	Deck      []*Card
 	Discard   []*Card
 	Hands     map[string][]*Card
 	Direction int
@@ -63,10 +41,14 @@ type Game struct {
 	State     State
 	Winner    string
 	rounds    int
+	deck      *Deck
 }
 
 func NewGame(seed int64) *Game {
 	id, _ := gonanoid.New(10)
+
+	deck := NewDeck(seed)
+
 	g := &Game{
 		Id:        id,
 		Players:   []*Player{},
@@ -74,18 +56,9 @@ func NewGame(seed int64) *Game {
 		Rand:      rand.New(rand.NewSource(seed)),
 		Hands:     make(map[string][]*Card),
 		State:     StateIdle,
+		deck:      deck,
 	}
 	return g
-}
-
-func NewCard(r Rank, c Color, n int) *Card {
-	id, _ := gonanoid.New(10)
-	return &Card{
-		Id:     id,
-		Color:  c,
-		Number: n,
-		Rank:   r,
-	}
 }
 
 func (g *Game) AddPlayer(p *Player) {
@@ -106,8 +79,8 @@ func (g *Game) GetWinner() string {
 }
 
 func (g *Game) Start() {
-	g.initDeck()
-	g.shuffle()
+	// g.initDeck()
+	// g.shuffle()
 	g.deal()
 	card, _ := g.draw()
 	g.Discard = append(g.Discard, card)
@@ -166,7 +139,7 @@ func (g *Game) Play(playerId string, cardId string) error {
 	g.Hands[playerId] = append(hand[:found], hand[found+1:]...)
 	g.Discard = append(g.Discard, card)
 
-	g.log(fmt.Sprintf("Player %s play Card[%s] %s %s. %d left cards", playerId, card.Id, card.Color, card.Number, len(g.Hands[playerId])))
+	g.log(fmt.Sprintf("Player %s play Card[%s] %s %d. %d left cards", playerId, card.Id, card.Color, card.Number, len(g.Hands[playerId])))
 
 	g.advanceTurn(1)
 	g.rounds++
@@ -184,15 +157,11 @@ func (g *Game) Finish() {
 }
 
 func (g *Game) DrawCard(playerId string) {
-	if !g.canDraw() {
-		g.log(fmt.Sprintf("Player %s draw card but deck is empty", playerId))
-		return
-	}
 	card, drawed := g.draw()
 	if drawed {
 		g.Hands[playerId] = append(g.Hands[playerId], card)
 		g.log(fmt.Sprintf("Player %s draw card %v", playerId, card))
-		g.log(fmt.Sprintf("%d cards left on deck", len(g.Deck)))
+		g.log(fmt.Sprintf("%d cards left on deck", g.deck.Size()))
 	} else {
 		if !g.existPossibleWinner() {
 			g.log("Deck empty, not possible winner found")
@@ -212,33 +181,33 @@ func (g *Game) IsGameOver() bool {
 	return false
 }
 
-func (g *Game) initDeck() {
-	var Colors []Color = []Color{ColorRed, ColorYellow, ColorGreen, ColorBlue}
-	for i := 0; i < MAX_NUMBER; i++ {
-		for _, c := range Colors {
-			card := NewCard(RankNumber, c, i)
-			g.Deck = append(g.Deck, card)
-		}
-	}
-	g.log(fmt.Sprintf("Deck created %d", len(g.Deck)))
-}
+// func (g *Game) initDeck() {
+// 	var Colors []Color = []Color{ColorRed, ColorYellow, ColorGreen, ColorBlue}
+// 	for i := 0; i < MAX_NUMBER; i++ {
+// 		for _, c := range Colors {
+// 			card := NewCard(RankNumber, c, i)
+// 			g.Deck = append(g.Deck, card)
+// 		}
+// 	}
+// 	g.log(fmt.Sprintf("Deck created %d", len(g.Deck)))
+// }
 
-func (g *Game) shuffle() {
-	g.Rand.Shuffle(len(g.Deck), func(i, j int) { g.Deck[i], g.Deck[j] = g.Deck[j], g.Deck[i] })
-	g.log("Deck suffled")
-}
+// func (g *Game) shuffle() {
+// 	g.Rand.Shuffle(len(g.Deck), func(i, j int) { g.Deck[i], g.Deck[j] = g.Deck[j], g.Deck[i] })
+// 	g.log("Deck suffled")
+// }
 
-func (g *Game) canDraw() bool {
-	return len(g.Deck) > 0
-}
+// func (g *Game) canDraw() bool {
+// 	return len(g.Deck) > 0
+// }
 
 func (g *Game) draw() (*Card, bool) {
-	var card *Card
-	if !g.canDraw() {
+	// var card *Card
+	if g.deck.IsEmpty() {
 		return nil, false
 	}
-	card, g.Deck = g.Deck[len(g.Deck)-1], g.Deck[:len(g.Deck)-1]
-	return card, true
+	// card, g.Deck = g.Deck[len(g.Deck)-1], g.Deck[:len(g.Deck)-1]
+	return g.deck.Pop(), true
 }
 
 func (g *Game) deal() {
@@ -275,7 +244,7 @@ func (g *Game) log(ev string) {
 
 func (g *Game) PrintState() {
 	fmt.Printf("Cards discarded %d\n", len(g.Discard))
-	fmt.Printf("Cards on Deck %d\n", len(g.Deck))
+	fmt.Printf("Cards on Deck %d\n", g.deck.Size())
 	fmt.Printf("Game direction %d\n", g.Direction)
 	fmt.Printf("Current card: %v\n", g.CurrentCard())
 	fmt.Printf("Current player: %v\n", g.CurrentPlayer())
@@ -309,4 +278,17 @@ func match(c1, c2 *Card) bool {
 		return true
 	}
 	return false
+}
+
+func FindPlayableCard(deck []*Card, toMatch *Card) (bool, *Card) {
+	var toPlay *Card
+	found := false
+	for _, c := range deck {
+		if match(c, toMatch) {
+			toPlay = c
+			found = true
+			break
+		}
+	}
+	return found, toPlay
 }

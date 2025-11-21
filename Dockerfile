@@ -9,9 +9,9 @@ COPY go.mod go.sum ./
 
 RUN go mod download
 
-COPY *.go ./
+COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /game-server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /game-server ./cmd/server/main.go
 
 EXPOSE 8000
 

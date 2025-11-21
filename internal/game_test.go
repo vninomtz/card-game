@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"testing"
@@ -6,6 +6,8 @@ import (
 
 func TestInitDeck(t *testing.T) {
 	g := NewGame(10)
+	g.AddPlayer(NewPlayer("test"))
+	g.AddPlayer(NewPlayer("test2"))
 	g.Start()
 
 	if g.CurrentCard().Id == "" {
@@ -22,11 +24,12 @@ func TestInitDeck(t *testing.T) {
 	}
 	has, card := FindPlayableCard(hand, g.CurrentCard())
 	if has {
-		err := g.Play(player.Id, card)
+		err := g.Play(player.Id, card.Id)
 		if err != nil {
 			t.Fatalf("Unexpected error: %s", err)
 		}
 	} else {
 		g.DrawCard(player.Id)
 	}
+	g.PrintState()
 }

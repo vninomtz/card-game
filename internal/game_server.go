@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"encoding/json"
@@ -9,24 +9,18 @@ import (
 )
 
 type GameServer struct {
-	register   chan *Client
-	unregister chan *Client
-	message    chan *Message
-	clients    map[*Client]bool
-	rooms      map[string]*GameManager
-	manager    *GameManager
-	cfg        *config
+	message chan *Message
+	rooms   map[string]*GameManager
+	manager *GameManager
+	cfg     *config
 }
 
 func NewServer(cfg *config) *GameServer {
 	return &GameServer{
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		message:    make(chan *Message),
-		clients:    make(map[*Client]bool),
-		rooms:      make(map[string]*GameManager),
-		manager:    NewGameManager(),
-		cfg:        cfg,
+		message: make(chan *Message),
+		rooms:   make(map[string]*GameManager),
+		manager: NewGameManager(),
+		cfg:     cfg,
 	}
 }
 

@@ -1,8 +1,9 @@
-package main
+package internal
 
 import (
 	"errors"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -34,6 +35,7 @@ type GameManager struct {
 	register   chan *Player
 	unregister chan *Player
 	event      chan *Event
+	mu         sync.RWMutex
 }
 
 func NewGameManager() *GameManager {
@@ -53,24 +55,30 @@ func (r *GameManager) Run() {
 }
 
 func (r *GameManager) Join(gameId string, username string) (string, error) {
+	r.mu.Lock()
 	gm, ok := r.games[gameId]
 	if !ok {
 		return "", errors.New("Game not found")
 	}
 	player := NewPlayer(username)
 	gm.AddPlayer(player)
+	r.mu.Unlock()
 	// TODO: Send event
 	return player.Id, nil
 }
 
 func (r *GameManager) NewGame() string {
 	gm := NewGame(time.Now().Unix())
+	r.mu.Lock()
 	r.games[gm.Id] = gm
+	r.mu.Unlock()
 	return gm.Id
 }
 
 func (r *GameManager) GetGame(id string) (*Game, error) {
+	r.mu.Lock()
 	gm, ok := r.games[id]
+	r.mu.Unlock()
 	if !ok {
 		return nil, errors.New("Game not found")
 	}
@@ -196,4 +204,42 @@ func (r *GameManager) FindUser(gameId, playerId string) (*Player, error) {
 		return nil, err
 	}
 	return player, nil
+}
+
+func (r *GameManager) IsGameOver(gameId string) bool {
+	gm, err := r.GetGame(gameId)
+	if err != nil {
+		return true
+	}
+
+	return gm.IsGameOver()
+}
+
+func (r *GameManager) GetPlayingUser(gameId string) (*Player, []*Card, error) {
+	gm, err := r.GetGame(gameId)
+	if err != nil {
+		return nil, nil, err
+	}
+	player := gm.CurrentPlayer()
+	hand := gm.GetPlayerHand(player.Id)
+
+	return player, hand, nil
+}
+
+func (r *GameManager) GetPlayingCard(gameId string) (*Card, error) {
+	gm, err := r.GetGame(gameId)
+	if err != nil {
+		return nil, err
+	}
+	hand := gm.CurrentCard()
+
+	return hand, nil
+}
+func (r *GameManager) GetGameWinner(gameId string) (string, error) {
+	gm, err := r.GetGame(gameId)
+	if err != nil {
+		return "", err
+	}
+
+	return gm.Winner, nil
 }
