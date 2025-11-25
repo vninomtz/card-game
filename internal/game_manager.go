@@ -58,6 +58,7 @@ func (r *GameManager) Join(gameId string, username string) (string, error) {
 	r.mu.Lock()
 	gm, ok := r.games[gameId]
 	if !ok {
+		r.mu.Unlock()
 		return "", errors.New("Game not found")
 	}
 	player := NewPlayer(username)
