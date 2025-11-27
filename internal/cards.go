@@ -21,6 +21,17 @@ const (
 	RankNumber Rank = "number"
 )
 
+const (
+	MAX_NUMBER    = 10
+	UNO_DECK_SIZE = 40
+)
+
+/*
+- Colors: Red, Yellow, Green, Blue
+- Numbers: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+- UNO Deck size 40
+*/
+
 type Card struct {
 	Id     string `json:"id"`
 	Color  Color  `json:"color"`

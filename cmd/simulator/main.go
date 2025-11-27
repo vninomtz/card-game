@@ -44,10 +44,10 @@ func Simulate(index int, man *internal.GameManager, size int) {
 	for i := range size {
 		playerid, err := man.Join(gameId, fmt.Sprintf("Player %d", i+1))
 		if err != nil {
-			log.Printf("Game %d: error to create players %v\n", err)
-			return
+			log.Printf("Game[%s]: Error to add player to simulation. %s\n", gameId, err)
+			continue
 		}
-		log.Printf("Game[%s]: Player %d added to simulation ", playerid)
+		log.Printf("Game[%s]: Player %d added to simulation ", gameId, playerid)
 		players[playerid] = Player{Id: playerid}
 	}
 
@@ -59,18 +59,9 @@ func Simulate(index int, man *internal.GameManager, size int) {
 		pCard, _ := man.GetPlayingCard(gameId)
 		has, card := internal.FindPlayableCard(hand, pCard)
 		if has {
-			man.ProcessMessage(internal.Message{
-				Action:   "PlayCard",
-				GameId:   gameId,
-				PlayerId: player.Id,
-				CardId:   card.Id,
-			})
+			man.ProcessAction("PlayCard", gameId, player.Id, card.Id)
 		} else {
-			man.ProcessMessage(internal.Message{
-				Action:   "DrawCard",
-				GameId:   gameId,
-				PlayerId: player.Id,
-			})
+			man.ProcessAction("DrawCard", gameId, player.Id, "")
 		}
 	}
 

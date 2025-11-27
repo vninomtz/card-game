@@ -89,11 +89,18 @@ func (s *GameServer) HandleJoinGame(w http.ResponseWriter, r *http.Request) {
 func (s *GameServer) HandlePlayCard(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	messange := Message{}
-	if err := json.NewDecoder(r.Body).Decode(&messange); err != nil {
+	type Request struct {
+		Action   string
+		GameId   string
+		PlayerId string
+		CardId   string
+	}
+
+	req := Request{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("Error to read data: %v\n", err)
 	}
-	s.manager.ProcessMessage(messange)
+	s.manager.ProcessAction(req.Action, req.GameId, req.PlayerId, req.CardId)
 	respondWithJSON(w, http.StatusOK, nil)
 }
 
@@ -113,12 +120,6 @@ func (s *GameServer) HandlePlayerEvents(w http.ResponseWriter, r *http.Request) 
 	gameId := r.PathValue("gameId")
 	playerId := r.PathValue("playerId")
 
-	player, err := s.manager.FindUser(gameId, playerId)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming no soportado", http.StatusInternalServerError)
@@ -126,22 +127,24 @@ func (s *GameServer) HandlePlayerEvents(w http.ResponseWriter, r *http.Request) 
 	}
 	notify := r.Context().Done()
 	defer func() {
-		player.Disconnect()
-		log.Printf("Player %s disconnected", player.Id)
+		s.manager.DisconnectPlayer(gameId, playerId)
 	}()
 
-	player.Connect()
+	ch, err := s.manager.ConnectPlayer(gameId, playerId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
 	flusher.Flush()
-	go s.manager.PlayerConnected(gameId, player)
 	for {
 		select {
 		case <-notify:
 			log.Println("Client close the connection")
 			return
-		case msg := <-player.eventch:
+		case msg := <-ch:
 			payload, err := json.Marshal(msg)
 			if err != nil {
-				log.Println("Error to marshal message: %v", msg)
+				log.Printf("Error to marshal message: %v\n", msg)
 				break
 			}
 			fmt.Fprintf(w, "event: %s\n", "Message")

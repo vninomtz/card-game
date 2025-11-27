@@ -15,19 +15,12 @@ type Event struct {
 }
 
 type Message struct {
-	Action   string     `json:"action"`
-	CardId   string     `json:"cardId"`
-	PlayerId string     `json:"playerId"`
-	GameId   string     `json:"gameId"`
-	State    *GameState `json:"state"`
-}
-
-type GameState struct {
-	Players  int
-	Turn     string
-	PlayCard *Card
-	Hand     []*Card
-	Winner   string
+	Event    string    `json:"action"`
+	CardId   string    `json:"cardId"`
+	PlayerId string    `json:"playerId"`
+	GameId   string    `json:"gameId"`
+	State    GameState `json:"state"`
+	Cards    []*Card   `json:"cards"`
 }
 
 type GameManager struct {
@@ -56,16 +49,12 @@ func (r *GameManager) Run() {
 
 func (r *GameManager) Join(gameId string, username string) (string, error) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	gm, ok := r.games[gameId]
 	if !ok {
-		r.mu.Unlock()
 		return "", errors.New("Game not found")
 	}
-	player := NewPlayer(username)
-	gm.AddPlayer(player)
-	r.mu.Unlock()
-	// TODO: Send event
-	return player.Id, nil
+	return gm.AddPlayer(username)
 }
 
 func (r *GameManager) NewGame() string {
@@ -86,12 +75,12 @@ func (r *GameManager) GetGame(id string) (*Game, error) {
 	return gm, nil
 }
 
-func (r *GameManager) ProcessMessage(msg Message) {
-	switch msg.Action {
+func (r *GameManager) ProcessAction(action, gameId, playerId, cardId string) {
+	switch action {
 	case "PlayCard":
-		r.playCard(msg.GameId, msg.PlayerId, msg.CardId)
+		r.playCard(gameId, playerId, cardId)
 	case "DrawCard":
-		r.drawCard(msg.GameId, msg.PlayerId)
+		r.drawCard(gameId, playerId)
 	default:
 		log.Println("Unknown Action")
 	}
@@ -105,19 +94,11 @@ func (r *GameManager) playCard(gameId, playerId, cardId string) {
 	}
 	gm.Play(playerId, cardId)
 
+	ev := "CardPlayed"
 	if gm.State == StateFinished {
-		winner := gm.GetWinner()
-		msg := Message{
-			Action: "GameFinished",
-			GameId: gameId,
-			State: &GameState{
-				Winner: winner,
-			},
-		}
-		r.Broadcast(gm, &msg)
+		ev = "GameFinished"
 	}
-
-	r.SendGameState(gm)
+	r.Broadcast(gm, ev)
 }
 func (r *GameManager) drawCard(gameId, playerId string) {
 	gm, err := r.GetGame(gameId)
@@ -126,7 +107,8 @@ func (r *GameManager) drawCard(gameId, playerId string) {
 		return
 	}
 	gm.DrawCard(playerId)
-	r.SendGameState(gm)
+
+	r.Broadcast(gm, "CardDrawed")
 }
 
 func (r *GameManager) StartGame(gameId string) {
@@ -136,42 +118,46 @@ func (r *GameManager) StartGame(gameId string) {
 		return
 	}
 	gm.Start()
-	// TODO: Send event
 
-	msg := Message{
-		Action: "GameStarted",
-		GameId: gameId,
-	}
-	r.Broadcast(gm, &msg)
-	r.SendGameState(gm)
+	r.Broadcast(gm, "GameStarted")
 }
 
-func (r *GameManager) Broadcast(gm *Game, msg *Message) {
+func (r *GameManager) Broadcast(gm *Game, event string) {
+	st := gm.GetState()
 	for _, p := range gm.Players {
 		if p.connected {
+			msg := &Message{
+				Event:  event,
+				GameId: gm.Id,
+				State:  st,
+				Cards:  gm.GetPlayerHand(p.Id),
+			}
 			p.Send(msg)
 		}
 	}
 }
 
-func (r *GameManager) SendGameState(gm *Game) {
-	for _, p := range gm.Players {
-		if p.connected {
-			state := &GameState{}
-			state.Players = len(gm.Players)
-			state.Turn = gm.CurrentPlayer().Id
-			state.PlayCard = gm.CurrentCard()
-			state.Hand = gm.GetPlayerHand(p.Id)
-			state.Winner = gm.GetWinner()
-
-			p.eventch <- &Message{
-				Action:   "GameUpdated",
-				GameId:   gm.Id,
-				PlayerId: p.Id,
-				State:    state,
-			}
-		}
+func (r *GameManager) ConnectPlayer(gameId, playerId string) (chan *Message, error) {
+	player, err := r.FindUser(gameId, playerId)
+	if err != nil {
+		return nil, err
 	}
+	player.Connect()
+	log.Printf("Game[%s]: Player %s connected", gameId, playerId)
+
+	go r.PlayerConnected(gameId, player)
+	return player.eventch, nil
+}
+
+func (r *GameManager) DisconnectPlayer(gameId, playerId string) {
+	player, err := r.FindUser(gameId, playerId)
+	if err != nil {
+		log.Printf("Disconnect error: Player %s not found\n", playerId)
+		return
+	}
+
+	player.Disconnect()
+	log.Printf("Game[%s]: Player %s disconnected", gameId, playerId)
 }
 
 func (r *GameManager) PlayerConnected(gameId string, player *Player) error {
@@ -179,19 +165,21 @@ func (r *GameManager) PlayerConnected(gameId string, player *Player) error {
 	if err != nil {
 		return err
 	}
-	msg := Message{
-		Action:   "PlayerConnected",
-		GameId:   gameId,
-		PlayerId: player.Id,
-		State: &GameState{
-			Players: len(gm.Players),
-		},
-	}
-	for _, p := range gm.Players {
-		if p.connected {
-			p.Send(&msg)
-		}
-	}
+	// msg := Message{
+	// 	Event:    "PlayerConnected",
+	// 	GameId:   gameId,
+	// 	PlayerId: player.Id,
+	// 	State:    &GameState{
+	// 		// Players: len(gm.Players),
+	// 	},
+	// }
+	// for _, p := range gm.Players {
+	// 	if p.connected {
+	// 		p.Send(&msg)
+	// 	}
+	// }
+
+	r.Broadcast(gm, "PlayerConnected")
 	return nil
 }
 

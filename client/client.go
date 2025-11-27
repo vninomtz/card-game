@@ -16,11 +16,18 @@ type Card struct {
 }
 
 type GameState struct {
-	Players  int
+	Status   string
+	Players  []PlayerState
 	Turn     string
-	PlayCard Card
-	Hand     []Card
+	PlayCard *Card
+	Hand     []*Card
 	Winner   string
+}
+
+type PlayerState struct {
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+	LeftCards int    `json:"left_cards"`
 }
 
 type GameClient struct {
@@ -29,14 +36,22 @@ type GameClient struct {
 	event    chan string
 	msgch    chan *Message
 	state    GameState
+	cards    []*Card
 }
 
 type Message struct {
-	Action   string    `json:"action"`
+	Event    string    `json:"action"`
 	CardId   string    `json:"cardId"`
 	PlayerId string    `json:"playerId"`
 	GameId   string    `json:"gameId"`
 	State    GameState `json:"state"`
+	Cards    []*Card   `json:"cards"`
+}
+type ActionRequest struct {
+	Action   string `json:"action"`
+	CardId   string `json:"cardId"`
+	PlayerId string `json:"playerId"`
+	GameId   string `json:"gameId"`
 }
 
 func NewGame() *GameClient {
@@ -62,34 +77,35 @@ func (g *GameClient) onEvent() {
 		select {
 		case msg := <-g.msgch:
 			g.state = msg.State
-			g.event <- msg.Action
+			g.cards = msg.Cards
+			g.event <- msg.Event
 		}
 	}
 }
 
 func (g *GameClient) DrawCard() {
-	msg := Message{
+	msg := ActionRequest{
 		Action:   "DrawCard",
 		CardId:   "",
 		PlayerId: g.playerId,
 		GameId:   g.gameId,
 	}
-	g.SendMessage(msg)
+	g.SendRequest(msg)
 }
 
 func (g *GameClient) PlayCard(index int) {
-	if index > len(g.state.Hand) || index < 0 {
+	if index > len(g.cards) || index < 0 {
 		log.Println("Invalid index")
 		return
 	}
-	cardId := g.state.Hand[index].Id
-	msg := Message{
+	cardId := g.cards[index].Id
+	msg := ActionRequest{
 		Action:   "PlayCard",
 		CardId:   cardId,
 		PlayerId: g.playerId,
 		GameId:   g.gameId,
 	}
-	g.SendMessage(msg)
+	g.SendRequest(msg)
 }
 
 func (g *GameClient) CreateGame() {
@@ -143,7 +159,7 @@ func (g *GameClient) StartGame() {
 	}
 }
 
-func (g *GameClient) SendMessage(msg Message) {
+func (g *GameClient) SendRequest(msg ActionRequest) {
 	b, err := json.Marshal(msg)
 	if err != nil {
 		log.Println("Error to serialize json")

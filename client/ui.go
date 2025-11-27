@@ -141,7 +141,7 @@ func (a *App) MainMenu() {
 func (a *App) LobbyGame() {
 	fmt.Println("CLI UNO GAME")
 	fmt.Printf("Game: %s  ", a.game.gameId)
-	fmt.Printf("Players: %d\n", a.game.state.Players)
+	fmt.Printf("Players: %d\n", len(a.game.state.Players))
 	fmt.Println("Waiting for more players...")
 	fmt.Println()
 	fmt.Println("Commands:")
@@ -167,7 +167,7 @@ func (a *App) ShowGameEnd() {
 func (a *App) ShowGame() {
 	fmt.Println("CLI UNO GAME")
 	fmt.Printf("Game: %s   Player: %s\n", a.game.gameId, a.game.playerId)
-	fmt.Printf("Players: %d\n", a.game.state.Players)
+	fmt.Printf("Players: %d\n", len(a.game.state.Players))
 	fmt.Print("Turn: ")
 	if a.game.playerId == a.game.state.Turn {
 		fmt.Printf("Your turn\n")
@@ -177,7 +177,7 @@ func (a *App) ShowGame() {
 	fmt.Printf("Current Card: %d %s", a.game.state.PlayCard.Number, a.game.state.PlayCard.Color)
 	fmt.Println()
 	fmt.Println("Hand:")
-	for i, c := range a.game.state.Hand {
+	for i, c := range a.game.cards {
 		fmt.Printf("-> Card[%d]: %d %s\n", i, c.Number, c.Color)
 	}
 

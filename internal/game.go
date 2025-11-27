@@ -26,22 +26,39 @@ const (
 	StateFinished State = "finished"
 )
 
-const MAX_NUMBER = 10
-const MAX_CARDS_BY_PLAYER = 7
+const (
+	MAX_CARDS_BY_PLAYER = 7
+)
 
 type Game struct {
-	Id        string
-	Players   []*Player
-	Discard   []*Card
-	Hands     map[string][]*Card
-	Direction int
-	Playing   string // Player Id
-	Events    []string
-	Rand      *rand.Rand
-	State     State
-	Winner    string
-	rounds    int
-	deck      *Deck
+	Id         string
+	Players    []*Player
+	Discard    []*Card
+	Hands      map[string][]*Card
+	Direction  int
+	Playing    string // Player Id
+	Events     []string
+	Rand       *rand.Rand
+	State      State
+	Winner     string
+	rounds     int
+	deck       *Deck
+	maxPlayers int
+}
+
+type GameState struct {
+	Status   string
+	Players  []*PlayerState
+	Turn     string
+	PlayCard *Card
+	Hand     []*Card
+	Winner   string
+}
+
+type PlayerState struct {
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+	LeftCards int    `json:"left_cards"`
 }
 
 func NewGame(seed int64) *Game {
@@ -50,19 +67,28 @@ func NewGame(seed int64) *Game {
 	deck := NewDeck(seed)
 
 	g := &Game{
-		Id:        id,
-		Players:   []*Player{},
-		Direction: 1,
-		Rand:      rand.New(rand.NewSource(seed)),
-		Hands:     make(map[string][]*Card),
-		State:     StateIdle,
-		deck:      deck,
+		Id:         id,
+		Players:    []*Player{},
+		Direction:  1,
+		Rand:       rand.New(rand.NewSource(seed)),
+		Hands:      make(map[string][]*Card),
+		State:      StateIdle,
+		deck:       deck,
+		maxPlayers: int(deck.Size() / MAX_CARDS_BY_PLAYER),
 	}
 	return g
 }
 
-func (g *Game) AddPlayer(p *Player) {
+func (g *Game) AddPlayer(username string) (string, error) {
+	if g.State == StateStarted {
+		return "", errors.New("Game already started")
+	}
+	if len(g.Players) == g.maxPlayers {
+		return "", errors.New("The game is full. No more players can join")
+	}
+	p := NewPlayer(username)
 	g.Players = append(g.Players, p)
+	return p.Id, nil
 }
 
 func (g *Game) GetPlayer(playerId string) (*Player, error) {
@@ -79,8 +105,6 @@ func (g *Game) GetWinner() string {
 }
 
 func (g *Game) Start() {
-	// g.initDeck()
-	// g.shuffle()
 	g.deal()
 	card, _ := g.draw()
 	g.Discard = append(g.Discard, card)
@@ -237,7 +261,7 @@ func (g *Game) advanceTurn(num int) {
 }
 
 func (g *Game) log(ev string) {
-	fmt.Printf("-> Game[%s]: %s\n", g.Id, ev)
+	// fmt.Printf("-> Game[%s]: %s\n", g.Id, ev)
 	g.Events = append(g.Events, ev)
 	//TODO: Maybe put here the logic to send the events to a channel
 }
@@ -254,6 +278,31 @@ func (g *Game) PrintState() {
 	for _, p := range g.Players {
 		hand := g.GetPlayerHand(p.Id)
 		fmt.Printf("  Player %s. Cards: %v\n", p.Id, hand)
+	}
+
+}
+
+func (g *Game) GetState() GameState {
+	players := []*PlayerState{}
+	for _, p := range g.Players {
+		cards := g.GetPlayerHand(p.Id)
+		st := &PlayerState{
+			Id:   p.Id,
+			Name: p.Name,
+		}
+		if cards == nil {
+			st.LeftCards = 0
+		} else {
+			st.LeftCards = len(cards)
+		}
+		players = append(players, st)
+	}
+	return GameState{
+		Players:  players,
+		Status:   string(g.State),
+		Turn:     g.Playing,
+		PlayCard: g.CurrentCard(),
+		Winner:   g.Winner,
 	}
 
 }

@@ -1,13 +1,15 @@
 package internal
 
 import (
+	"fmt"
 	"testing"
 )
 
-func TestInitDeck(t *testing.T) {
+func TestGame(t *testing.T) {
 	g := NewGame(10)
-	g.AddPlayer(NewPlayer("test"))
-	g.AddPlayer(NewPlayer("test2"))
+	g.AddPlayer("Test 1")
+	g.AddPlayer("Test 2")
+	fmt.Printf("Max number of players %d\n", g.maxPlayers)
 	g.Start()
 
 	if g.CurrentCard().Id == "" {
@@ -32,4 +34,30 @@ func TestInitDeck(t *testing.T) {
 		g.DrawCard(player.Id)
 	}
 	g.PrintState()
+}
+
+func TestJoinPlayers(t *testing.T) {
+	g := NewGame(10)
+	for i := range g.maxPlayers {
+		_, err := g.AddPlayer(fmt.Sprintf("Player %d", i+1))
+		if err != nil {
+			t.Fatalf("Error exception not expected, got %s", err)
+		}
+	}
+
+	_, err := g.AddPlayer("Not allowed")
+
+	if err == nil {
+		t.Fatalf("Expected exception, got nil instead")
+	}
+	fmt.Printf("Exception to add player: %s\n", err)
+	g.Start()
+
+	_, err = g.AddPlayer("Not allowed")
+	if err == nil {
+		t.Fatalf("Expected exception, got nil instead")
+	}
+
+	fmt.Printf("Exception to add player: %s\n", err)
+
 }
